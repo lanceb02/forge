@@ -4,35 +4,7 @@ use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
-
-pub const TEMP_CONFIG_PATH: &str = "/var/lib/forge/.tmp";
-
-pub fn create_config(package: &str) -> Result<(), String> {
-    let filename = format!("{package}.toml");
-    let mut path = PathBuf::from(TEMP_CONFIG_PATH);
-
-    if !path.exists() {
-        fs::create_dir_all(&path)
-            .map_err(|e| format!("failed to create temp config directory: {}", e))?;
-    }
-
-    path.push(filename);
-
-    let template = format!(
-        r#"# {package} configuration
-update = "tagged" # no | live | tagged
-build = "make"
-install = "make install"
-dependencies = []
-    "#
-    );
-
-    fs::write(path, template).map_err(|e| format!("failed to create config: {}", e))?;
-
-    Ok(())
-}
 
 pub fn dir_size(path: &Path) -> std::io::Result<u64> {
     let mut size = 0;

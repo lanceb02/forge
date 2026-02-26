@@ -1,11 +1,8 @@
-use crate::config::Config;
-use crate::util::{
-    TEMP_CONFIG_PATH, create_config, dir_size, get_editor, is_root, open_in_editor, yn_prompt,
-};
+use crate::config::{self, ConfigCommand, TEMP_CONFIG_PATH, create_config};
+use crate::util::{dir_size, get_editor, is_root, open_in_editor, yn_prompt};
 use git2::Repository;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 const BASE_REPO_PATH: &str = "/var/db/forge";
 const BASE_CONFIG_PATH: &str = "/etc/forge/packages";
@@ -78,32 +75,6 @@ impl Action {
     }
 }
 
-//=========================================
-// command helpers
-//=========================================
-
-fn build(config_path: PathBuf, repo_path: PathBuf) -> Result<(), String> {
-    let config = Config::new(config_path);
-    if let Some(bld) = config.unwrap().build {
-        let status = Command::new(bld)
-            .current_dir(repo_path)
-            .status()
-            .map_err(|e| format!("failed to execute editor: {}", e))?;
-
-        if !status.success() {
-            return Err(format!("editor exited with non-zero status: {}", status));
-        }
-    } else {
-        return Err("no build command found".to_string());
-    }
-
-    Ok(())
-}
-
-//=========================================
-// commands
-//=========================================
-
 fn add(url: &str) -> Result<(), String> {
     if !is_root() {
         return Err("add must be run as root".to_string());
@@ -143,7 +114,10 @@ fn add(url: &str) -> Result<(), String> {
     );
 
     if yn_prompt("Run build and install commands?") {
-        build(config_path, clone_path)?;
+        println!("Building...");
+        config::run_config_command(&config_path, &clone_path, ConfigCommand::Build)?;
+        println!("Installing...");
+        config::run_config_command(&config_path, &clone_path, ConfigCommand::Install)?;
     }
 
     Ok(())
@@ -204,6 +178,7 @@ fn remove(packages: Vec<String>) -> Result<(), String> {
 
     if yn_prompt("Proceed with removal?") {
         for (name, path, cfg_path) in package_paths {
+            config::run_config_command(&cfg_path, &path, ConfigCommand::Uninstall)?;
             fs::remove_dir_all(&path).map_err(|e| format!("failed to remove {}: {}", name, e))?;
             fs::remove_file(&cfg_path).map_err(|e| format!("failed to remove {}: {}", name, e))?;
             println!("Removed {}", name);

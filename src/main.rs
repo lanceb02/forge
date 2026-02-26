@@ -1,7 +1,7 @@
 use action::Action;
 use std::{env, fs};
 
-use crate::util::TEMP_CONFIG_PATH;
+use crate::config::TEMP_CONFIG_PATH;
 
 mod action;
 mod config;
