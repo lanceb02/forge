@@ -1,5 +1,10 @@
+use crate::util::{self, yn_prompt};
+use git2::Repository;
+use std::fs;
+use std::path::PathBuf;
+
 pub enum Action {
-    Add { repo: String },
+    Add { url: String },
     Update,
     Upgrade { packages: Vec<String> },
     Autoremove,
@@ -12,16 +17,12 @@ pub enum Action {
 
 impl Action {
     pub fn parse(args: &[String]) -> Result<Self, String> {
-        let cmd = args.get(1)
-            .ok_or("no command provided")?
-            .as_str();
+        let cmd = args.get(1).ok_or("no command provided")?.as_str();
 
         match cmd {
             "add" => {
-                let repo = args.get(2)
-                    .ok_or("add requires <repo>")?
-                    .clone();
-                Ok(Action::Add { repo })
+                let url = args.get(2).ok_or("add requires <repo>")?.clone();
+                Ok(Action::Add { url })
             }
             "update" => Ok(Action::Update),
             "upgrade" => {
@@ -40,9 +41,7 @@ impl Action {
             }
             "list" => Ok(Action::List),
             "search" => {
-                let term = args.get(2)
-                    .ok_or("search requires <term>")?
-                    .clone();
+                let term = args.get(2).ok_or("search requires <term>")?.clone();
                 Ok(Action::Search { term })
             }
             "clean" => {
@@ -50,32 +49,42 @@ impl Action {
                 Ok(Action::Clean { packages })
             }
             "show" => {
-                let package = args.get(2)
-                    .ok_or("show requires <package>")?
-                    .clone();
+                let package = args.get(2).ok_or("show requires <package>")?.clone();
                 Ok(Action::Show { package })
             }
             _ => Err(format!("unknown command {}", cmd)),
         }
     }
 
-    pub fn execute(self) {
+    pub fn execute(self) -> Result<(), String> {
         match self {
-            Action::Add { repo } => add(repo),
-            Action::Update => update(),
-            Action::Upgrade { packages } => upgrade(packages),
-            Action::Autoremove => autoremove(),
+            Action::Add { url } => add(url.as_str()),
+            Action::Update => Ok(update()),
+            Action::Upgrade { packages } => Ok(upgrade(packages)),
+            Action::Autoremove => Ok(autoremove()),
             Action::Remove { packages } => remove(packages),
-            Action::List => list(),
-            Action::Search { term } => search(term),
-            Action::Clean { packages } => clean(packages),
-            Action::Show { package } => show(package),
+            Action::List => Ok(list()),
+            Action::Search { term } => Ok(search(term)),
+            Action::Clean { packages } => Ok(clean(packages)),
+            Action::Show { package } => Ok(show(package)),
         }
     }
 }
 
-fn add(repo: String) {
-    println!("adding {}", repo);
+fn add(url: &str) -> Result<(), String> {
+    let base_path = "/var/lib/forge";
+    let repo_name = {
+        let last_segment = url.rsplit('/').next().unwrap_or(url);
+        last_segment.strip_suffix(".git").unwrap_or(last_segment)
+    };
+    let clone_path = PathBuf::from(base_path).join(repo_name);
+    let repo = Repository::clone(url, &clone_path)
+        .map_err(|e| format!("failed to clone {}: {}", repo_name, e))?;
+    println!(
+        "new package initialized at: {}",
+        repo.path().to_str().unwrap()
+    );
+    Ok(())
 }
 
 fn update() {
@@ -92,10 +101,49 @@ fn autoremove() {
     println!("autoremoving");
 }
 
-fn remove(packages: Vec<String>) {
-    for (_, p) in packages.iter().enumerate() {
-        println!("removing: {}", p);
+fn remove(packages: Vec<String>) -> Result<(), String> {
+    let base_path = "/var/lib/forge";
+    println!("checking dependencies...\n");
+    let package_paths: Vec<(String, PathBuf)> = packages
+        .into_iter()
+        .map(|p| {
+            let path = PathBuf::from(base_path).join(&p);
+            if !path.exists() {
+                Err(format!("no installed package: {}", p))
+            } else {
+                Ok((p, path))
+            }
+        })
+        .collect::<Result<_, _>>()?; // propagates the first error
+
+    println!(
+        "Packages to remove ({}): {}\n",
+        package_paths.len(),
+        package_paths
+            .iter()
+            .map(|(p, _)| p.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    let total_size: u64 = package_paths
+        .iter()
+        .map(|(_, path)| util::dir_size(path).unwrap_or(0))
+        .sum();
+
+    println!(
+        "Total remove size: {:.2} MB\n",
+        total_size as f64 / (1024.0 * 1024.0)
+    );
+
+    if yn_prompt("Proceed with removal?") {
+        for (name, path) in package_paths {
+            fs::remove_dir_all(&path).map_err(|e| format!("failed to remove {}: {}", name, e))?;
+            println!("Removed {}", name);
+        }
     }
+
+    Ok(())
 }
 
 fn list() {
@@ -115,4 +163,3 @@ fn clean(packages: Vec<String>) {
 fn show(package: String) {
     println!("showing {}", package);
 }
-
