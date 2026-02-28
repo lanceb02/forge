@@ -66,7 +66,7 @@ impl Action {
         match self {
             Action::Add { url } => add(url.as_str()),
             Action::Update => update(),
-            Action::Upgrade { packages } => Ok(upgrade(packages)),
+            Action::Upgrade { packages } => upgrade(packages),
             Action::Autoremove => Ok(autoremove()),
             Action::Remove { packages } => remove(packages),
             Action::List => list(),
@@ -166,17 +166,75 @@ fn update() -> Result<(), String> {
     if yn_prompt("Proceed with update?") {
         for (name, path) in package_paths {
             pull_repo(&path).map_err(|e| format!("failed to update repo: {e}"))?;
-            println!("Updated {}", name);
+            println!("{} up to date.", name);
         }
     }
 
     Ok(())
 }
 
-fn upgrade(packages: Vec<String>) {
-    for (_, p) in packages.iter().enumerate() {
-        println!("upgrading: {}", p);
+fn upgrade(packages: Vec<String>) -> Result<(), String> {
+    if !nix::unistd::geteuid().is_root() {
+        return Err("clean must be run as root".to_string());
     }
+
+    let package_paths: Vec<(String, PathBuf, PathBuf)> = if packages.is_empty() {
+        fs::read_dir(BASE_CONFIG_PATH)
+            .map_err(|e| format!("failed to iterate package directory: {}", e))?
+            .map(|p| {
+                let entry = p.map_err(|e| e.to_string())?;
+                let path = entry.path();
+
+                let pkgname = path
+                    .file_stem()
+                    .ok_or_else(|| format!("invalid filename: {:?}", path))?
+                    .to_string_lossy()
+                    .into_owned();
+
+                let path = PathBuf::from(BASE_REPO_PATH).join(&pkgname);
+                let cfg_path = PathBuf::from(BASE_CONFIG_PATH).join(format!("{}.toml", &pkgname));
+
+                if !path.exists() || !cfg_path.exists() {
+                    Err(format!("no installed package: {}", pkgname))
+                } else {
+                    Ok((pkgname, path, cfg_path))
+                }
+            })
+            .collect::<Result<_, _>>()?
+    } else {
+        packages
+            .into_iter()
+            .map(|p| {
+                let path = PathBuf::from(BASE_REPO_PATH).join(&p);
+                let cfg_path = PathBuf::from(BASE_CONFIG_PATH).join(format!("{}.toml", p));
+                if !path.exists() || !cfg_path.exists() {
+                    Err(format!("no installed package: {}", p))
+                } else {
+                    Ok((p, path, cfg_path))
+                }
+            })
+            .collect::<Result<_, _>>()?
+    };
+
+    println!(
+        "Packages to upgrade ({}): {}\n",
+        package_paths.len(),
+        package_paths
+            .iter()
+            .map(|(p, _, _)| p.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    if yn_prompt("Proceed with upgrade?") {
+        for (name, path, cfg_path) in package_paths {
+            config::run_config_command(&cfg_path, &path, ConfigCommand::Build)?;
+            config::run_config_command(&cfg_path, &path, ConfigCommand::Install)?;
+            println!("Upgraded {}", name);
+        }
+    }
+
+    Ok(())
 }
 
 fn autoremove() {
