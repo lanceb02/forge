@@ -129,13 +129,17 @@ fn update() -> Result<(), String> {
         }
     }
 
-    util::print_collected_packages(&update_pkgs, "Packages to update");
-    if util::yn_prompt("Proceed with update?") {
-        for (name, path, cfg_path) in update_pkgs {
-            config::run_config_command(&cfg_path, &path, ConfigCommand::Build)?;
-            config::run_config_command(&cfg_path, &path, ConfigCommand::Install)?;
-            println!("Upgraded {}", name);
+    if !update_pkgs.is_empty() {
+        util::print_collected_packages(&update_pkgs, "Packages to update");
+        if util::yn_prompt("Proceed with update?") {
+            for (name, path, cfg_path) in update_pkgs {
+                config::run_config_command(&cfg_path, &path, ConfigCommand::Build)?;
+                config::run_config_command(&cfg_path, &path, ConfigCommand::Install)?;
+                println!("Upgraded {}", name);
+            }
         }
+    } else {
+        println!("No packages to update.");
     }
 
     Ok(())
