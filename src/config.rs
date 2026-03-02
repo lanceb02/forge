@@ -122,7 +122,10 @@ pub fn run_config_command(
 
     if let Some(c) = cmd {
         let mut parts = c.split_whitespace();
-        let cmd_base = parts.next().ok_or("empty command".to_string())?;
+        let Some(cmd_base) = parts.next() else {
+            // Empty command — do nothing and exit successfully
+            return Ok(());
+        };
         let args: Vec<&str> = parts.collect();
 
         let status = Command::new(cmd_base)
