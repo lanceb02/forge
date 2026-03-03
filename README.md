@@ -1,9 +1,9 @@
 <p align="center">
   <img width="256" height=auto src="logo.png">
   <br/>
-  <img src="https://img.shields.io/github/contributors/bancedev/forge" alt="contributors">
-  <img src="https://img.shields.io/github/license/bancedev/forge" alt="license">
-  <img src="https://img.shields.io/github/forks/bancedev/forge" alt="forks">
+  <img src="https://img.shields.io/github/contributors/lancebord/forge" alt="contributors">
+  <img src="https://img.shields.io/github/license/lancebord/forge" alt="license">
+  <img src="https://img.shields.io/github/forks/lancebord/forge" alt="forks">
 </p>
 
 ---
